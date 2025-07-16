@@ -36,6 +36,28 @@ namespace AdiSastrawan.FSMBT
 
         public override void UpdateState()
         {
+            if(currentTimeToSetTrap < 0)
+            {
+                obj.SwitchState(obj.setTrapState);
+                return;
+            }
+            if (obj.currentTarget != null)
+            {
+                bool isBirdTrapped = Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.goToTrappedBirdDistance && GameEventManager.instance.hunterEvents.CheckTargetTrapped();
+                if (isBirdTrapped)
+                {
+                    obj.SwitchState(obj.goToTrappedBirdState);
+                    return;
+                }
+                if(Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.shootingDistance)
+                {
+                    obj.SwitchState(obj.shootBirdState);
+                    return;
+                }
+                obj.SwitchState(obj.followBirdState);
+                return;
+            }
+
             behaviourTree.Process();
         }
 
@@ -52,13 +74,6 @@ namespace AdiSastrawan.FSMBT
                 currentTimeToSetTrap -= Time.deltaTime;
                 return currentTimeToSetTrap < 0;
             }));
-            Leaf switchStateToSetTrap = new Leaf("Switch State To SeT Trap", new ActionStrategy(() =>
-            {
-                obj.SwitchState(obj.setTrapState);
-            }));
-
-            setTrapSeqeunce.AddChild(checkTimeToSetTrap);
-            setTrapSeqeunce.AddChild(switchStateToSetTrap);
             Leaf patrol = new Leaf("Patrol", new ActionStrategy(
             () =>
             {
@@ -91,60 +106,20 @@ namespace AdiSastrawan.FSMBT
                 }
             }));
             Leaf checkIsIdling = new Leaf("CheckIsIdling", new ConditionStrategy(() => !isPatroling));
-            Leaf checkIsSeeBird = new Leaf("CheckIsSeeBird", new ConditionStrategy(() =>
-            {
-                Transform target = obj.currentTarget;
-                return target;
-            }));
-            Leaf checkIsBirdTrapped = new Leaf("CheckIsBirdTrapped", new ConditionStrategy(() =>
-            {
-                bool isBirdTrapped = false;
-                if (obj.currentTarget != null)
-                {
-                    isBirdTrapped = Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.goToTrappedBirdDistance && GameEventManager.instance.hunterEvents.CheckTargetTrapped();
-                }
-                return isBirdTrapped;
-            }));
-            Leaf checkIsNearShootingRange = new Leaf("Check Is Near Shooting Range", new ConditionStrategy(() =>
-            {
-                return Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.shootingDistance;
-            }));
-
+        
             Selector selectShootOrFollowSelector = new Selector("select Shoot Or Follow Selector");
-            Leaf switchStateToShootBird = new Leaf("Switch State To Shoot Bird State", new ActionStrategy(() => obj.SwitchState(obj.shootBirdState)));
-            Leaf switchStateToFollowBird = new Leaf("Switch State To Follow Bird State", new ActionStrategy(() => obj.SwitchState(obj.followBirdState)));
-            Leaf switchStateToGoToTrappedbBird = new Leaf("Switch State To Go To Trapped Bird State", new ActionStrategy(() => obj.SwitchState(obj.goToTrappedBirdState)));
             Selector checkNeedToSwitchStateSelector = new Selector("Check Need To Switch State");
-            Sequence checkSwitchToShootOrFollowSeqeunce = new Sequence("Check Switch To Shoot Or Follow");
 
             Sequence shootingSeqeunce = new Sequence("Shooting Seqeunce");
             Sequence goToTrappedBirdSeqeunce = new Sequence("GoToTrappedBird Seqeunce");
 
             Selector selectSwitchStateOrFindBird = new Selector("Switch State Or Find Bird");
-
-            goToTrappedBirdSeqeunce.AddChild(checkIsBirdTrapped);
-            goToTrappedBirdSeqeunce.AddChild(switchStateToGoToTrappedbBird);
-
-            shootingSeqeunce.AddChild(checkIsNearShootingRange);
-            shootingSeqeunce.AddChild(switchStateToShootBird);
-
-            selectShootOrFollowSelector.AddChild(shootingSeqeunce);
-            selectShootOrFollowSelector.AddChild(switchStateToFollowBird);
-
-            checkSwitchToShootOrFollowSeqeunce.AddChild(checkIsSeeBird);
-            checkSwitchToShootOrFollowSeqeunce.AddChild(selectShootOrFollowSelector);
-
-            checkNeedToSwitchStateSelector.AddChild(goToTrappedBirdSeqeunce);
-            checkNeedToSwitchStateSelector.AddChild(checkSwitchToShootOrFollowSeqeunce);
-            checkNeedToSwitchStateSelector.AddChild(setTrapSeqeunce);
-
             checkIdling.AddChild(checkIsIdling);
             checkIdling.AddChild(Idling);
+            selectAction.AddChild(checkTimeToSetTrap);
             selectAction.AddChild(checkIdling);
             selectAction.AddChild(checkPatroling);
-            selectSwitchStateOrFindBird.AddChild(checkNeedToSwitchStateSelector);
-            selectSwitchStateOrFindBird.AddChild(selectAction);
-            behaviourTree.AddChild(selectSwitchStateOrFindBird);
+            behaviourTree.AddChild(selectAction);
         }
 
         Vector3 RandomPatrolPosition(Vector3 origin, float distance, int layermask)
@@ -182,32 +157,32 @@ namespace AdiSastrawan.FSMBT
 
         public override void UpdateState()
         {
+            if (obj.currentTarget != null)
+            {
+                bool isBirdTrapped = Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.goToTrappedBirdDistance && GameEventManager.instance.hunterEvents.CheckTargetTrapped();
+                if (isBirdTrapped)
+                {
+                    obj.SwitchState(obj.goToTrappedBirdState);
+                    return;
+                }
+                if (obj.isTargetVisible&&Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.shootingDistance)
+                {
+                    obj.SwitchState(obj.shootBirdState);
+                    return;
+                }
+                if(waitTime < 0)
+                {
+                    obj.SwitchState(obj.findBirdState);
+                    return;
+                }
+            }
             behaviourTree.Process();
         }
 
         void SetupTree()
         {
             behaviourTree = new BehaviourTree("FollowBird");
-            UntilFail root = new UntilFail("root");
             Selector selectAction = new Selector("Select Action");
-            Sequence sequenceFollowBird = new Sequence("SequenceFollow");
-            Sequence toShootStateSequence = new Sequence("To Shoot State Sequence");
-
-            Leaf checkIsNearShootingRange = new Leaf("Check Is Near Shooting Range", new ConditionStrategy(() => Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.shootingDistance));
-            Leaf switchStateToShootState = new Leaf("Switch State To Shoot State", new ActionStrategy(() => obj.SwitchState(obj.shootBirdState)));
-
-            toShootStateSequence.AddChild(checkIsNearShootingRange);
-            toShootStateSequence.AddChild(switchStateToShootState);
-
-            Sequence toGoToTrappedBirdStateSequence = new Sequence("Go To Trapped Bird State");
-
-            Leaf checkIsBirdTrapped = new Leaf("Check Is Bird Trapped", new ConditionStrategy(() =>
-              GameEventManager.instance.hunterEvents.CheckTargetTrapped() && Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.goToTrappedBirdDistance
-            ));
-            Leaf switchStateToGoToTrappedBirdState = new Leaf("Switch State To Go To Trapped Bird State", new ActionStrategy(() => obj.SwitchState(obj.goToTrappedBirdState)));
-
-            toGoToTrappedBirdStateSequence.AddChild(checkIsBirdTrapped);
-            toGoToTrappedBirdStateSequence.AddChild(switchStateToGoToTrappedBirdState);
 
             Leaf checkStillVisible = new Leaf("CheckStillVisible", new ConditionStrategy(() => obj.isTargetVisible));
             Leaf follow = new Leaf("Follow", new ActionStrategy(() =>
@@ -220,28 +195,17 @@ namespace AdiSastrawan.FSMBT
                 }
                 waitTime = obj.waitTime;
             }));
-
-            Sequence waitSeqeunce = new Sequence("Wait Seqeunce");
+            Sequence followSequence = new Sequence("Follow Seqeunce");
+            followSequence.AddChild(checkStillVisible);
+            followSequence.AddChild(follow);
             Leaf checkWaitCountdown = new Leaf("Wait", new ConditionStrategy(() =>
             {
                 waitTime -= Time.deltaTime;
                 return waitTime < 0;
             }));
-            Leaf switchStateToFindBirdState = new Leaf("Switch State To Find Bird", new ActionStrategy(() => obj.SwitchState(obj.findBirdState)));
 
-            waitSeqeunce.AddChild(checkWaitCountdown);
-            waitSeqeunce.AddChild(switchStateToFindBirdState);
-
-            Selector selectShootOrFollowSelector = new Selector("Select Shoot Or Follow");
-
-            selectShootOrFollowSelector.AddChild(toShootStateSequence);
-            selectShootOrFollowSelector.AddChild(follow);
-
-            sequenceFollowBird.AddChild(checkStillVisible);
-            sequenceFollowBird.AddChild(selectShootOrFollowSelector);
-            selectAction.AddChild(toGoToTrappedBirdStateSequence);
-            selectAction.AddChild(sequenceFollowBird);
-            selectAction.AddChild(waitSeqeunce);
+            selectAction.AddChild(followSequence);
+            selectAction.AddChild(checkWaitCountdown);
             behaviourTree.AddChild(selectAction);
         }
 
@@ -267,6 +231,24 @@ namespace AdiSastrawan.FSMBT
 
         public override void UpdateState()
         {
+            if (obj.currentTarget != null && !GameEventManager.instance.hunterEvents.CheckTargetTrapped()) { 
+                if (!obj.isTargetVisible)
+                {
+                    obj.SwitchState(obj.findBirdState);
+                    return;
+                }
+                if (Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.shootingDistance)
+                {
+                    obj.SwitchState(obj.shootBirdState);
+                    return;
+                }
+                else
+                {
+                    obj.SwitchState(obj.followBirdState);
+                    return;
+                }
+            }
+             
             behaviourTree.Process();
         }
 
@@ -275,21 +257,8 @@ namespace AdiSastrawan.FSMBT
             behaviourTree = new BehaviourTree("Go To Trapped Bird");
             Leaf checkBirdStillTrapped = new Leaf("Check Bird Still Trapped", new ConditionStrategy(() =>
             {
-                bool checkBirdStillTrapped = GameEventManager.instance.hunterEvents.CheckTargetTrapped();
-                return checkBirdStillTrapped;
+                return GameEventManager.instance.hunterEvents.CheckTargetTrapped();
             }));
-            Leaf checkIsStillVisible = new Leaf("Check is Bird Still Visible", new ConditionStrategy(() => obj.isTargetVisible));
-            Leaf checkIsNearShootingRange = new Leaf("Check Is Near Shooting Range", new ConditionStrategy(() =>
-            {
-                return Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.shootingDistance;
-            }));
-            Leaf switchStateToShootBird = new Leaf("Switch State To Shoot Bird State", new ActionStrategy(() => obj.SwitchState(obj.shootBirdState)));
-            Leaf switchStateToFollowBird = new Leaf("Switch State To Follow Bird State", new ActionStrategy(() => obj.SwitchState(obj.followBirdState)));
-            Leaf switchStateToFindBird = new Leaf("Switch State To Find Bird State", new ActionStrategy(() => obj.SwitchState(obj.findBirdState)));
-            Selector checkNeedToSwitchStateSelector = new Selector("Check Need To Switch State");
-            Sequence checkSwitchToShootOrFollowSeqeunce = new Sequence("Check Switch To Shoot Or Follow");
-            Selector selectShootOrFollowSelector = new Selector("select Shoot Or Follow Selector");
-            Sequence switchToShootingSeqeunce = new Sequence("shooting Seqeunce");
             Leaf goToBird = new Leaf("Go to bird", new ActionStrategy(() =>
             {
                 if (obj.currentTarget != null)
@@ -302,8 +271,7 @@ namespace AdiSastrawan.FSMBT
             Leaf checkIsNearTrappedBird = new Leaf("Check Is Near Trapped Bird", new ConditionStrategy(() =>
             {
                 if (obj.currentTarget == null) return false;
-                bool isNearTrappedBird = Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.captureDistance;
-                return isNearTrappedBird;
+                return Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.captureDistance;
             }));
             Sequence captureSequence = new Sequence("Capture Seqeunce");
             Leaf captureBird = new Leaf("Capture Bird", new ActionStrategy(() =>
@@ -316,24 +284,11 @@ namespace AdiSastrawan.FSMBT
             }));
             Selector capturingSelector = new Selector("Capturing Selector");
 
-            switchToShootingSeqeunce.AddChild(checkIsNearShootingRange);
-            switchToShootingSeqeunce.AddChild(switchStateToShootBird);
-
-            selectShootOrFollowSelector.AddChild(switchToShootingSeqeunce);
-            selectShootOrFollowSelector.AddChild(switchStateToFollowBird);
-
-            checkSwitchToShootOrFollowSeqeunce.AddChild(checkIsStillVisible);
-            checkSwitchToShootOrFollowSeqeunce.AddChild(selectShootOrFollowSelector);
-
-            checkNeedToSwitchStateSelector.AddChild(checkBirdStillTrapped);
-            checkNeedToSwitchStateSelector.AddChild(checkSwitchToShootOrFollowSeqeunce);
-            checkNeedToSwitchStateSelector.AddChild(switchStateToFindBird);
-
             captureSequence.AddChild(checkIsNearTrappedBird);
             captureSequence.AddChild(captureBird);
             capturingSelector.AddChild(captureSequence);
             capturingSelector.AddChild(goToBird);
-            behaviourTree.AddChild(checkNeedToSwitchStateSelector);
+            behaviourTree.AddChild(checkBirdStillTrapped);
             behaviourTree.AddChild(capturingSelector);
         }
     }
@@ -388,6 +343,7 @@ namespace AdiSastrawan.FSMBT
     public class ShootBirdState : BaseState<Hunter>
     {
         BehaviourTree behaviourTree;
+        bool isAiming;
         public ShootBirdState(Hunter obj) : base(obj)
         {
         }
@@ -397,6 +353,7 @@ namespace AdiSastrawan.FSMBT
             obj.currentStateText.text = "Current State : Shoot Bird";
             SetupTree();
             obj.hunterDetectionManager.UpdateDetectionInvoke(0.05f);
+            isAiming = true;
             obj.agent.ResetPath();
             obj.agent.isStopped = true;
         }
@@ -411,6 +368,33 @@ namespace AdiSastrawan.FSMBT
 
         public override void UpdateState()
         {
+            if (obj.currentTarget != null && !isAiming)
+            {
+                bool isBirdTrapped = Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.goToTrappedBirdDistance && GameEventManager.instance.hunterEvents.CheckTargetTrapped();
+                if (isBirdTrapped)
+                {
+                    obj.SwitchState(obj.goToTrappedBirdState);
+                    return;
+                }
+                if (obj.isTargetVisible && Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.shootingDistance)
+                {
+                    obj.SwitchState(obj.shootBirdState);
+                    return;
+                }
+                if (!obj.isTargetVisible)
+                {
+                    obj.SwitchState(obj.findBirdState);
+                    return;
+                }
+                float dist = Vector3.Distance(obj.currentTarget.position, obj.transform.position);
+                bool checkIsNearby = dist < obj.viewDistance && dist > obj.shootingDistance;
+                if (checkIsNearby)
+                {
+                    obj.SwitchState(obj.followBirdState);
+                    return;
+                }
+            }
+
             behaviourTree.Process();
         }
 
@@ -448,45 +432,12 @@ namespace AdiSastrawan.FSMBT
             {
                 obj.hunterDetectionManager.SwitchDetectionMode(HunterDetectionMode.Chasing, 25f);
                 obj.AimStart(false);
+                isAiming = false;
             }));
-            Selector needToSwitchStateSelector = new Selector("Need To Switch State Selector");
-
-            Sequence toSwitchGoToTrappedBirdSeqeuence = new Sequence("To Switch Go To Trapped Bird");
-            Leaf checkIsTrapped = new Leaf("CheckIsTrapped", new ConditionStrategy(() =>
-                Vector3.Distance(obj.currentTarget.position, obj.transform.position) < obj.goToTrappedBirdDistance && GameEventManager.instance.hunterEvents.CheckTargetTrapped()
-            ));
-            Leaf switchStateToGoToTrappedBird = new Leaf("Switch State To Go To Trapped Bird", new ActionStrategy(() => obj.SwitchState(obj.goToTrappedBirdState)));
-
-            toSwitchGoToTrappedBirdSeqeuence.AddChild(checkIsTrapped);
-            toSwitchGoToTrappedBirdSeqeuence.AddChild(switchStateToGoToTrappedBird);
-
-            Sequence toSwitchFollowBird = new Sequence("To Switch Follow Bird");
-
-            Leaf checkIsStillNearby = new Leaf("Check is Still Nearby", new ConditionStrategy(() =>
-            {
-                float dist = Vector3.Distance(obj.currentTarget.position, obj.transform.position);
-                bool checkIsNearby = dist < obj.viewDistance && dist > obj.shootingDistance;
-                return checkIsNearby;
-            }));
-            Leaf switchStateToFollowBirdState = new Leaf("Switch State To Follow Bird State", new ActionStrategy(() => obj.SwitchState(obj.followBirdState)));
-
-            toSwitchFollowBird.AddChild(checkIsStillNearby);
-            toSwitchFollowBird.AddChild(switchStateToFollowBirdState);
-
-            Sequence toSwitchFindBird = new Sequence("To Switch Find Bird");
-            Leaf checkIsNotVisible = new Leaf("CheckIsNotVisible", new ConditionStrategy(() => !obj.isTargetVisible));
-            Leaf switchStateToFindBirdState = new Leaf("Switch To Find Bird", new ActionStrategy(() => obj.SwitchState(obj.findBirdState)));
-
-            toSwitchFindBird.AddChild(checkIsNotVisible);
-            toSwitchFindBird.AddChild(switchStateToFindBirdState);
 
             shootingSeqeunce.AddChild(aim);
             shootingSeqeunce.AddChild(shoot);
             shootingSeqeunce.AddChild(reload);
-            needToSwitchStateSelector.AddChild(toSwitchGoToTrappedBirdSeqeuence);
-            needToSwitchStateSelector.AddChild(toSwitchFollowBird);
-            needToSwitchStateSelector.AddChild(toSwitchFindBird);
-            shootingSeqeunce.AddChild(needToSwitchStateSelector);
             behaviourTree.AddChild(shootingSeqeunce);
         }
         void Shoot()
